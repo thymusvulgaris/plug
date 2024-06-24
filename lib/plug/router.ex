@@ -266,28 +266,8 @@ defmodule Plug.Router do
     router_to = Module.get_attribute(env.module, :plug_router_to)
     init_mode = Module.get_attribute(env.module, :plug_builder_opts)[:init_mode]
 
-    defs =
-      for {callback, {mod, opts}} <- router_to do
-        if init_mode == :runtime do
-          quote do
-            defp unquote(callback)(conn, _opts) do
-              unquote(mod).call(conn, unquote(mod).init(unquote(Macro.escape(opts))))
-            end
-          end
-        else
-          opts = mod.init(opts)
-
-          quote do
-            defp unquote(callback)(conn, _opts) do
-              require unquote(mod)
-              unquote(mod).call(conn, unquote(Macro.escape(opts)))
-            end
-          end
-        end
-      end
-
     quote do
-      unquote_splicing(defs)
+      unquote_splicing(defs(init_mode, router_to))
       import Plug.Router, only: []
     end
   end
@@ -635,4 +615,27 @@ defmodule Plug.Router do
 
   defp extract_path({:_, _, var}) when is_atom(var), do: "/*_path"
   defp extract_path(path), do: path
+
+  defp defs(:runtime, router_to) do
+    for {callback, {mod, opts}} <- router_to do
+      quote do
+        defp unquote(callback)(conn, _opts) do
+          unquote(mod).call(conn, unquote(mod).init(unquote(Macro.escape(opts))))
+        end
+      end
+    end
+  end
+
+  defp defs(_init_mode, router_to) do
+    for {callback, {mod, opts}} <- router_to do
+      opts = mod.init(opts)
+
+      quote do
+        defp unquote(callback)(conn, _opts) do
+          require unquote(mod)
+          unquote(mod).call(conn, unquote(Macro.escape(opts)))
+        end
+      end
+    end
+  end
 end
